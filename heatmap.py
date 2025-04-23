@@ -15,7 +15,6 @@ piece_heatmaps = {
 
 
 def get_heatmap_bonus(fen: str, is_ai_white: bool) -> float:
-    """Berechnet den Heatmap-Bonus unter Berücksichtigung der KI-Farbe."""
     board = chess.Board(fen)
     bonus = 0.0
 
@@ -24,16 +23,18 @@ def get_heatmap_bonus(fen: str, is_ai_white: bool) -> float:
         if not piece:
             continue
 
-        # Bestimme die Heatmap-Position (spiegeln für Schwarz)
-        if is_ai_white == (piece.color == chess.WHITE):
-            pos = square  # Originalposition für KI = Weiß
+        # Bestimme die Position aus KI-Perspektive
+        if piece.color == (chess.WHITE if is_ai_white else chess.BLACK):
+            # Eigenen Figuren: Addiere Heatmap-Wert
+            pos = square
+            heatmap_value = piece_heatmaps.get(piece.symbol().upper(), 0.0)[pos]
+            bonus += heatmap_value
         else:
-            file = 7 - chess.square_file(square)  # Horizontal spiegeln
-            rank = 7 - chess.square_rank(square)  # Vertikal spiegeln
+            # Gegnerische Figuren: Subtrahiere gespiegelten Heatmap-Wert
+            file = 7 - chess.square_file(square)
+            rank = 7 - chess.square_rank(square)
             pos = chess.square(file, rank)
+            heatmap_value = piece_heatmaps.get(piece.symbol().upper(), 0.0)[pos]
+            bonus -= heatmap_value  # 👈 Gegnerische Figuren reduzieren den Bonus
 
-        piece_type = piece.symbol().upper()
-        if piece_type in piece_heatmaps:
-            bonus += piece_heatmaps[piece_type][pos]
-
-    return bonus if is_ai_white else -bonus
+    return bonus

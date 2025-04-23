@@ -1,6 +1,4 @@
 import chess
-from stable_baselines3 import PPO
-from stable_baselines3.common.env_util import make_vec_env
 import concurrent.futures
 import numpy as np
 from evaluate_board import evaluate_board
@@ -111,7 +109,7 @@ class ChessEnv:
                         best_eval = eval_score
                         best_move = legal_moves[futures.index(future)]  # 👈 Zug aus Future-Index
             except concurrent.futures.TimeoutError:
-                break  # Zeit abgelaufen, breche ab
+                break
             print(f"Top-Zug auf Tiefe {current_depth}: {best_move.uci()} (Bewertung: {best_eval})")
             depth += 1
 
@@ -251,25 +249,3 @@ def quiescence(board, alpha, beta):
             alpha = score
 
     return alpha
-
-
-class RLChessEnv(ChessEnv):
-    def __init__(self, player_color):
-        super().__init__(player_color, depth=3)  # Standardtiefe setzen
-        self.env = make_vec_env(lambda: self, n_envs=1)  # VecEnv für schnelleres Training
-        self.model = PPO("MlpPolicy", self.env, verbose=1)
-
-    def train(self, timesteps=100000):
-        """Lässt die KI für eine gewisse Zeit gegen sich selbst spielen."""
-        self.model.learn(total_timesteps=timesteps)
-
-    def get_ai_move(self):
-        """Gibt einen RL-gelernten Zug zurück."""
-        obs = self.get_state().reshape(1, -1)  # RL erwartet 2D-Array
-        action, _states = self.model.predict(obs)
-        legal_moves = list(self.board.legal_moves)
-        return legal_moves[action % len(legal_moves)]  # Wählt erlaubten Zug
-
-
-
-

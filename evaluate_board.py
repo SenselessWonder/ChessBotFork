@@ -11,7 +11,7 @@ PIECE_VALUES = {
     'B': 3.2, 'b': -3.2,
     'R': 5, 'r': -5,
     'Q': 9, 'q': -9,
-    'K': 0, 'k': 0
+    'K': 100, 'k': -100
 }
 
 # JIT-optimierte Materialbewertung (ohne Heatmap)
@@ -63,15 +63,25 @@ def evaluate_board(fen_or_board, is_ai_white) -> float:
     penalty = 0.0
     for square in chess.SQUARES:
         piece = board.piece_at(square)
-        if not piece:
-            continue
+        if not piece or piece.color == (chess.WHITE if is_ai_white else chess.BLACK):
+            continue  # Überspringe KI-Figuren
 
-        # Angreifer/Verteidiger aus Sicht der aktuellen KI-Farbe berechnen
+        # Angreifer = KI-Farbe, Verteidiger = Gegner
         attackers = len(board.attackers(chess.WHITE if is_ai_white else chess.BLACK, square))
         defenders = len(board.attackers(chess.BLACK if is_ai_white else chess.WHITE, square))
 
         if attackers > defenders:
-            penalty += PIECE_VALUES[piece.symbol().upper()] * 0.5
+            penalty += abs(PIECE_VALUES[piece.symbol().upper()]) * 0.5
+
+    print(f"[DEBUG] Material: {material_score:.2f}")
+    print(f"[DEBUG] Heatmap-Bonus: {heatmap_bonus:.2f}")
+    print(f"[DEBUG] Penalty: {penalty:.2f}")
+
 
     score = material_score + heatmap_bonus - penalty
     return score  # Nicht mehr invertieren, da Heatmap/Bonus bereits korrigiert
+
+
+board = chess.Board()
+score = evaluate_board(board, is_ai_white=False)
+print(f"Bewertung Startposition (KI = Schwarz): {score:.2f}")
