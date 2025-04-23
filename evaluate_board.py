@@ -1,87 +1,64 @@
 import chess
 import numpy as np
 from numba import jit
-from heatmaps import get_heatmap_bonus
 
-# Materialwerte für die Figuren
-# (Diese Werte kannst du nach Bedarf anpassen)
+# Materialwerte aus Weiß-Perspektive
 PIECE_VALUES = {
-    'P': 1, 'p': -1,
-    'N': 3, 'n': -3,
-    'B': 3.2, 'b': -3.2,
-    'R': 5, 'r': -5,
-    'Q': 9, 'q': -9,
-    'K': 100, 'k': -100
+    'P': 1, 'N': 3, 'B': 3.2,
+    'R': 5, 'Q': 9, 'K': 0,
+    'p': -1, 'n': -3, 'b': -3.2,
+    'r': -5, 'q': -9, 'k': 0
 }
 
-# JIT-optimierte Materialbewertung (ohne Heatmap)
-@jit(nopython=True)
-def evaluate_material(fen: str) -> float:
+def calculate_material(fen: str) -> float:
     score = 0.0
-    # Wir nehmen an, dass der FEN-String im ersten Teil (vor dem Leerzeichen) nur das Figurenlayout enthält
-    layout = fen.split(" ")[0]
-    for c in layout:
-        # Ziffern überspringen, da sie leere Felder darstellen
-        if c >= "1" and c <= "8":
-            continue
-        else:
-            # Da Numba keine Dicts unterstützt, verwenden wir einfache if-Statements
-            if c == 'P':
-                score += 1.0
-            elif c == 'p':
-                score -= 1.0
-            elif c == 'N':
-                score += 3.0
-            elif c == 'n':
-                score -= 3.0
-            elif c == 'B':
-                score += 3.2
-            elif c == 'b':
-                score -= 3.2
-            elif c == 'R':
-                score += 5.0
-            elif c == 'r':
-                score -= 5.0
-            elif c == 'Q':
-                score += 9.0
-            elif c == 'q':
-                score -= 9.0
-            # K und k werden üblicherweise nicht bewertet
+    for c in fen.split(" ")[0]:
+        if c in PIECE_VALUES:
+            score += PIECE_VALUES[c]
     return score
 
 
-def evaluate_board(fen_or_board, is_ai_white) -> float:
-    board = chess.Board(fen_or_board) if isinstance(fen_or_board, str) else fen_or_board
-    fen = board.fen()
-    # Materialbewertung
-    material_score = evaluate_material(fen)
-
-    # Heatmap-Bonus muss die KI-Farbe berücksichtigen
-    heatmap_bonus = get_heatmap_bonus(fen)
-
-    # Strafe-Berechnung aus KI-Perspektive
-    penalty = 0.0
+def calculate_positional(board: chess.Board) -> float:
+    position_bonus = 0.0
     for square in chess.SQUARES:
         piece = board.piece_at(square)
-        if not piece or piece.color == (chess.WHITE if is_ai_white else chess.BLACK):
-            continue  # Überspringe KI-Figuren
+        if not piece:
+            continue
 
-        # Angreifer = KI-Farbe, Verteidiger = Gegner
-        attackers = len(board.attackers(chess.WHITE if is_ai_white else chess.BLACK, square))
-        defenders = len(board.attackers(chess.BLACK if is_ai_white else chess.WHITE, square))
+        # Bonus für zentrale Bauern
+        if piece.piece_type == chess.PAWN:
+            file = chess.square_file(square)
+            rank = chess.square_rank(square)
+            if 2 <= file <= 5 and 3 <= rank <= 4:
+                position_bonus += 0.3 if piece.color == chess.WHITE else -0.3
 
-        if attackers > defenders:
-            penalty += abs(PIECE_VALUES[piece.symbol().upper()]) * 0.5
+        # Bonus für Springer im Zentrum
+        elif piece.piece_type == chess.KNIGHT:
+            if square in [chess.D4, chess.D5, chess.E4, chess.E5]:
+                position_bonus += 0.5 if piece.color == chess.WHITE else -0.5
 
-    print(f"[DEBUG] Material: {material_score:.2f}")
-    print(f"[DEBUG] Heatmap-Bonus: {heatmap_bonus:.2f}")
-    print(f"[DEBUG] Penalty: {penalty:.2f}")
+    # 3. Strafe für Doppelbauern
+    pawn_files = {}
+    for square in board.pieces(chess.PAWN, chess.WHITE):
+        file = chess.square_file(square)
+        pawn_files[file] = pawn_files.get(file, 0) + 1
+    for count in pawn_files.values():
+        if count > 1:
+            position_bonus -= 0.5 * (count - 1)
 
+    # 4. Königssicherheit (Beispiel: Anzahl der nahen Bauern)
+    white_king = board.king(chess.WHITE)
+    black_king = board.king(chess.BLACK)
+    king_safety = 0.0
+    if white_king:
+        king_safety += len(board.attackers(chess.BLACK, white_king)) * -0.3
+    if black_king:
+        king_safety += len(board.attackers(chess.WHITE, black_king)) * 0.3
 
-    score = material_score + heatmap_bonus - penalty
-    return score  # Nicht mehr invertieren, da Heatmap/Bonus bereits korrigiert
+    score = material + position_bonus + king_safety
 
-
-board = chess.Board()
-score = evaluate_board(board, is_ai_white=False)
-print(f"Bewertung Startposition (KI = Schwarz): {score:.2f}")
+def evaluate_board(board: chess.Board) -> float:
+    """Bewertet die Position aus Sicht des aktuellen Spielers (board.turn)."""
+    material = calculate_material(board)
+    positional = calculate_positional(board)
+    return material + positional

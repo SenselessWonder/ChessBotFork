@@ -3,9 +3,16 @@ import pygame
 from ChessEnv import ChessEnv
 from evaluate_board import evaluate_board
 
-clock = pygame.time.Clock()
+# Farbpalette
+COLORS = {
+    "background": (240, 240, 240),
+    "button": (70, 130, 180),
+    "button_hover": (100, 150, 200),
+    "text": (255, 255, 255),
+    "board_light": (238, 238, 210),
+    "board_dark": (118, 150, 86)
+}
 
-# Farben definieren
 WHITE = (238, 238, 210)
 BLACK = (118, 150, 86)
 
@@ -14,6 +21,21 @@ WIDTH, HEIGHT = 800, 800
 SQUARE_SIZE = WIDTH // 8
 
 
+class Button:
+    def __init__(self, x, y, width, height, text, radius=10):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.radius = radius
+        self.hovered = False
+
+    def draw(self, surface):
+        color = COLORS["button_hover"] if self.hovered else COLORS["button"]
+        pygame.draw.rect(surface, color, self.rect, border_radius=self.radius)
+
+        font = pygame.font.Font(None, 36)
+        text_surf = font.render(self.text, True, COLORS["text"])
+        text_rect = text_surf.get_rect(center=self.rect.center)
+        surface.blit(text_surf, text_rect)
 
 def load_svg(filename, size):
     """Lädt eine SVG-Datei in pygame und skaliert sie auf die richtige Größe."""
@@ -27,13 +49,15 @@ class GUI:
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Schach-KI")
+
+        self.game_mode = None  # 'human', 'ai_vs_ai'
         self.player_color = None
-        self.search_time = None
-        self.choose_color()
-        self.choose_search_time()
-        self.env = ChessEnv(self.player_color,None, self.search_time)
-        self.board = self.env.board
-        self.ai_moved = False  # Initialisieren, um Fehler zu vermeiden
+        self.search_time = 5
+        self.env = None
+        self.buttons = []
+        self.show_end_screen = False
+
+        self.init_main_menu()
 
         # Figuren laden
         self.piece_images = {
@@ -130,66 +154,6 @@ class GUI:
 
             self.selected_square = None
 
-    def run(self):
-        running = True
-        while running:
-            if self.board.turn != self.player_color and not self.ai_moved:
-                ai_move = self.env.get_ai_move()
-                if ai_move:
-                    # Bewertung aus KI-Perspektive
-                    ai_score = evaluate_board(
-                        self.board,
-                        self.env.ai_color == chess.WHITE
-                    )
-                    print(f"KI-Zug: {ai_move.uci()} | Bewertung: {ai_score:.2f} "
-                          f"[{'Weiß' if self.env.ai_color == chess.WHITE else 'Schwarz'}]")
-                    self.board.push(ai_move)
-                    self.ai_moved = True
-
-            # Event-Handling
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    self.handle_click(event.pos)
-
-            # Zeichne alles
-            self.draw_board()
-            self.draw_selected_square()
-            self.draw_legal_moves()
-            self.draw_pieces()
-
-            pygame.display.flip()  # WICHTIG: Zeige die Änderungen an
-            clock.tick(60)  # Begrenze auf 60 FPS (vermindert CPU-Last)
-
-
-        pygame.quit()
-
-    def choose_color(self):
-        """Fragt den Spieler, ob er Weiß oder Schwarz spielen will."""
-        choosing = True
-        font = pygame.font.Font(None, 36)
-        text_white = font.render("Drücke W für Weiß", True, (255, 255, 255))
-        text_black = font.render("Drücke B für Schwarz", True, (255, 255, 255))
-
-        while choosing:
-            self.screen.fill((0, 0, 0))  # Hintergrund schwarz
-            self.screen.blit(text_white, (WIDTH // 3, HEIGHT // 3))
-            self.screen.blit(text_black, (WIDTH // 3, HEIGHT // 2))
-            pygame.display.flip()
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    quit()
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_w:
-                        self.player_color = chess.WHITE
-                        choosing = False
-                    elif event.key == pygame.K_s:
-                        self.player_color = chess.BLACK
-                        choosing = False
-
     def draw_legal_moves(self):
         """Zeichnet die legalen Züge basierend auf der Spielerfarbe."""
         if self.selected_square is not None:
@@ -255,79 +219,158 @@ class GUI:
                     pygame.quit()
                     quit()
 
-    def choose_search_time(self):
-        """Lässt den Spieler die Rechenzeit (1-10 Sekunden) wählen."""
-        choosing = True
-        font = pygame.font.Font(None, 36)
-        text = font.render("Rechenzeit (1-10 Sekunden):", True, (255, 255, 255))
+    def init_main_menu(self):
+        self.buttons = [
+            Button(250, 200, 300, 50, "Mensch vs KI", radius=15),
+            Button(250, 270, 300, 50, "KI vs KI", radius=15),
+            Button(250, 340, 300, 50, f"Rechenzeit: {self.search_time}s", radius=15)
+        ]
 
-        while choosing:
-            self.screen.fill((0, 0, 0))
-            self.screen.blit(text, (WIDTH // 4, HEIGHT // 3))
-            pygame.display.flip()
-
-            for event in pygame.event.get():
-                if event.type == pygame.KEYDOWN:
-                    if pygame.K_1 <= event.key <= pygame.K_9:
-                        self.search_time = event.key - pygame.K_0
-                        choosing = False
-                    elif event.key == pygame.K_0:
-                        self.search_time = 10
-                        choosing = False
-                elif event.type == pygame.QUIT:
-                    pygame.quit()
-                    quit()
-
-    # Im __init__ ersetzen:
-    # self.choose_depth() → self.choose_search_time()
-    # self.ai_depth → self.search_time
-    def choose_depth(self):
-        """Lässt den Spieler die KI-Tiefe zwischen 1 und 5 wählen."""
-        choosing = True
-        font = pygame.font.Font(None, 36)
-        text = font.render("Wähle die KI-Tiefe (1-5):", True, (255, 255, 255))
-
-        while choosing:
-            self.screen.fill((0, 0, 0))  # Hintergrund schwarz
-            self.screen.blit(text, (WIDTH // 3, HEIGHT // 3))
-            pygame.display.flip()
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    quit()
-                elif event.type == pygame.KEYDOWN:
-                    if pygame.K_1 <= event.key <= pygame.K_5:  # Zahl zwischen 1 und 5 gedrückt
-                        self.ai_depth = event.key - pygame.K_0
-                        choosing = False
-
-    def show_end_screen(self):
-        """Zeigt das Endergebnis des Spiels an."""
-        result_text = "Unentschieden!"
-        if self.board.is_checkmate():
-            result_text = "Schachmatt! Du hast gewonnen!" if self.board.turn != self.player_color else "Schachmatt! Du hast verloren!"
-
-        font = pygame.font.Font(None, 50)
-        text = font.render(result_text, True, (255, 255, 255))
-        self.screen.fill((0, 0, 0))
-        self.screen.blit(text, (WIDTH // 4, HEIGHT // 3))
+    def draw_menu(self):
+        self.screen.fill(COLORS["background"])
+        for btn in self.buttons:
+            btn.draw(self.screen)
         pygame.display.flip()
 
-        pygame.time.delay(3000)  # Warte 3 Sekunden
-        pygame.quit()
-        quit()
+    def handle_menu_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
 
-    def draw_material_bar(self):
-        material = 0
-        PIECE_VALUES = {'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9}
-        for piece in self.board.piece_map().values():
-            value = PIECE_VALUES.get(piece.symbol().upper(), 0)
-            material += value if piece.color == chess.WHITE else -value
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for i, btn in enumerate(self.buttons):
+                    if btn.rect.collidepoint(event.pos):
+                        if i == 0:  # Mensch vs KI
+                            self.game_mode = 'human'
+                            self.choose_color()
+                        elif i == 1:  # KI vs KI
+                            self.game_mode = 'ai_vs_ai'
+                            self.start_game()
+                        elif i == 2:  # Rechenzeit
+                            self.search_time = 5 if self.search_time == 10 else 10
+                            btn.text = f"Rechenzeit: {self.search_time}s"
 
-        max_material = 39  # Maximalwert
-        bar_height = HEIGHT // 2
-        current = (material / max_material) * bar_height
-        y = HEIGHT // 2 - current if material > 0 else HEIGHT // 2
+            if event.type == pygame.MOUSEMOTION:
+                for btn in self.buttons:
+                    btn.hovered = btn.rect.collidepoint(event.pos)
 
-        pygame.draw.rect(self.screen, (50, 50, 50), (WIDTH - 30, 0, 30, HEIGHT))
-        pygame.draw.rect(self.screen, (200, 200, 200), (WIDTH - 30, y, 30, abs(current)))
+    # Angepasste choose_color mit Buttons
+    def choose_color(self):
+        color_buttons = [
+            Button(250, 200, 300, 50, "Weiß spielen", radius=15),
+            Button(250, 270, 300, 50, "Schwarz spielen", radius=15),
+            Button(250, 340, 300, 50, "Zurück", radius=15)
+        ]
+
+        while True:
+            self.screen.fill(COLORS["background"])
+            for btn in color_buttons:
+                btn.draw(self.screen)
+            pygame.display.flip()
+
+            event = pygame.event.wait()
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for i, btn in enumerate(color_buttons):
+                    if btn.rect.collidepoint(event.pos):
+                        if i == 0:
+                            self.player_color = chess.WHITE
+                            self.start_game()
+                            return
+                        elif i == 1:
+                            self.player_color = chess.BLACK
+                            self.start_game()
+                            return
+                        elif i == 2:
+                            self.init_main_menu()
+                            return
+
+            if event.type == pygame.MOUSEMOTION:
+                for btn in color_buttons:
+                    btn.hovered = btn.rect.collidepoint(event.pos)
+
+    def start_game(self):
+        self.env = ChessEnv(self.search_time)
+        if self.game_mode == 'ai_vs_ai':
+            self.player_color = None
+            self.env.board = chess.Board()
+        else:
+            self.env.board = chess.Board()
+            if self.player_color == chess.BLACK:
+                self.make_ai_move()
+
+        self.run_game_loop()
+
+    def run_game_loop(self):
+        running = True
+        while running:
+            if self.game_mode == 'ai_vs_ai' or \
+                    (self.game_mode == 'human' and self.env.board.turn != self.player_color):
+
+                ai_move = self.env.get_ai_move()
+                if ai_move:
+                    self.env.board.push(ai_move)
+                    print(f"KI-Zug: {ai_move.uci()}")
+
+                    if self.env.board.is_game_over():
+                        self.show_end_screen()
+                        running = False
+
+            # Zeichne das Brett
+            self.draw_board()
+            self.draw_pieces()
+
+            # Event-Handling
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                    pygame.quit()
+                    quit()
+
+                if self.game_mode == 'human' and event.type == pygame.MOUSEBUTTONDOWN:
+                    self.handle_click(event.pos)
+
+            pygame.display.flip()
+            clock = pygame.time.Clock()
+            clock.tick(60)
+
+        if self.show_end_screen:
+            self.show_end_screen()
+
+    def show_end_screen(self):
+        end_buttons = [
+            Button(250, 300, 300, 50, "Neues Spiel", radius=15),
+            Button(250, 370, 300, 50, "Beenden", radius=15)
+        ]
+
+        while True:
+            self.screen.fill(COLORS["background"])
+
+            # Ergebnistext
+            result = self.get_game_result()
+            font = pygame.font.Font(None, 50)
+            text = font.render(result, True, (0, 0, 0))
+            self.screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 200))
+
+            for btn in end_buttons:
+                btn.draw(self.screen)
+            pygame.display.flip()
+
+            event = pygame.event.wait()
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for i, btn in enumerate(end_buttons):
+                    if btn.rect.collidepoint(event.pos):
+                        if i == 0:
+                            self.init_main_menu()
+                            return
+                        elif i == 1:
+                            pygame.quit()
+                            quit()

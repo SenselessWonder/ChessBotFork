@@ -1,11 +1,12 @@
 import chess
 import concurrent.futures
 import numpy as np
-from evaluate_board import evaluate_board
+#from evaluate_board import evaluate_board
 import time
 import random
 
 PIECE_VALUES = {'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0}
+
 class ChessEnv:
     def __init__(self, player_color, depth, search_time):
         self.search_time = search_time
@@ -65,69 +66,60 @@ class ChessEnv:
         # ... Weitere Positionen
     }
 
-    def get_ai_move(self):
-        self.transposition_table.clear()
+    def __init__(self, search_time=5):
+        self.board = chess.Board()
+        self.search_time = search_time
+        self.transposition_table = {}
+
+    def get_ai_move(self) -> chess.Move:
+        """Ermittelt den besten Zug mit universellem Minimax"""
         start_time = time.time()
-        timeout_left = self.search_time - (time.time() - start_time)
-        if timeout_left <= 0:
-            return None
         best_move = None
-        best_eval = -np.inf if self.ai_color == chess.WHITE else np.inf
-        depth = 1
+        best_score = -float('inf')
+        legal_moves = list(self.board.legal_moves)
 
-        maximizing = (self.ai_color == chess.WHITE)
-        best_eval = -float('inf') if maximizing else float('inf')
+        try:
+            # Bewerte alle legalen Züge parallel
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = {
+                    executor.submit(
+                        self.evaluate_move,
+                        move,
+                        start_time
+                    ): move for move in legal_moves
+                }
 
-        while time.time() - start_time < self.search_time:
-            current_depth = depth
-            legal_moves = list(self.board.legal_moves)
-            futures = []
+                for future in concurrent.futures.as_completed(futures, timeout=self.search_time):
+                    move = futures[future]
+                    score = future.result()
 
-            for move in legal_moves:
-                # 👇 Erstelle eine Kopie des Bretts für jeden Zug
-                board_copy = self.board.copy()
-                board_copy.push(move)
-                futures.append(
-                    self.executor.submit(
-                        self.evaluate_move_parallel,
-                        board_copy,  # Korrekte Übergabe der Kopie
-                        current_depth - 1,
-                        -np.inf,
-                        np.inf,
-                        not maximizing,  # 👈 Gegnerische Perspektive
-                        start_time,
-                    )
-                )
+                    if score > best_score or (score == best_score and random.random() < 0.3):
+                        best_score = score
+                        best_move = move
 
+        except (concurrent.futures.TimeoutError, TimeoutError):
+            print(f"Zeitüberschreitung nach {time.time() - start_time:.1f}s")
 
-            # Sammle Ergebnisse mit Timeout
-            try:
-                for future in concurrent.futures.as_completed(futures, timeout=self.search_time - (time.time() - start_time)):
-                    eval_score = future.result()
-                    if (self.ai_color == chess.WHITE and eval_score > best_eval) or \
-                       (self.ai_color == chess.BLACK and eval_score < best_eval):
-                        best_eval = eval_score
-                        best_move = legal_moves[futures.index(future)]  # 👈 Zug aus Future-Index
-            except concurrent.futures.TimeoutError:
-                break
-            print(f"Top-Zug auf Tiefe {current_depth}: {best_move.uci()} (Bewertung: {best_eval})")
-            depth += 1
+        # Fallback: Zufälliger Zug
+        return best_move or random.choice(legal_moves)
 
-        print(f"KI suchte bis Stufe {depth-1} in {time.time()-start_time:.1f}s")
-        return best_move or random.choice(list(self.board.legal_moves))  # Fallback
+    def evaluate_move(self, move: chess.Move, start_time: float) -> float:
+        """Bewertet einen einzelnen Zug"""
+        board_copy = self.board.copy()
+        board_copy.push(move)
 
-    def evaluate_move_parallel(self, board, depth, alpha, beta, maximizing_player, start_time):
-        print(f"Starte Bewertung für Tiefe {depth}")
-        return minimax(
-            board,
-            depth,
-            alpha,
-            beta,
-            maximizing_player,
-            self.transposition_table,
-            start_time,
-            self.search_time,
-        )
+        try:
+            return minimax(
+                board=board_copy,
+                depth=3,  # Basis-Tiefe
+                alpha=-float('inf'),
+                beta=float('inf'),
+                transposition_table=self.transposition_table,
+                start_time=start_time,
+                time_limit=self.search_time - (time.time() - start_time)
+            )
+        except TimeoutError:
+            return -float('inf')  # Timeout als schlechteste Bewertung
 
 
 def get_move_value(board, move):
@@ -150,54 +142,65 @@ def get_move_value(board, move):
 
 MATERIAL_VALUES = np.array([0, 1, 3, 3, 5, 9, 1000])  # [None, P, N, B, R, Q, K]
 
+import chess
+import time
+
 
 def minimax(
-    board,
-    depth,
-    alpha,
-    beta,
-    maximizing_player,
-    transposition_table,
-    start_time,
-    time_limit
-):
-    # Überprüfe, ob die Zeit abgelaufen ist
+        board: chess.Board,
+        depth: int,
+        alpha: float = -float('inf'),
+        beta: float = float('inf'),
+        maximizing_player: bool = None,
+        transposition_table: dict = None,
+        start_time: float = None,
+        time_limit: float = None
+) -> float:
+    """
+    Universelle Minimax-Implementierung für Schach.
+    Bewertet Positionen immer aus Sicht des aktuellen Spielers (board.turn).
+    """
+
+    # Initialisiere Standardwerte
+    if maximizing_player is None:
+        maximizing_player = board.turn == chess.WHITE
+
+    if transposition_table is None:
+        transposition_table = {}
+
+    if start_time is None:
+        start_time = time.time()
+
+    if time_limit is None:
+        time_limit = float('inf')
+
+    # Zeitkontrolle
     if time.time() - start_time > time_limit:
-        raise TimeoutError()
+        raise TimeoutError("Zeitüberschreitung")
 
-    fen = board.fen() + (" W" if maximizing_player else " B")
-
-    # Überprüfe die Transpositionstabelle
+    # Transposition Table Lookup
+    fen = board.fen()
     if fen in transposition_table:
         entry = transposition_table[fen]
-        if entry["depth"] >= depth and abs(entry["score"]) < 1000:
-            return entry["score"]
+        if entry['depth'] >= depth:
+            return entry['score']
 
-    # Abbruchbedingung: Tiefe 0 oder Spielende
+    # Blattknoten oder Endstellung
     if depth == 0 or board.is_game_over():
-        if depth == 0:
-            # Quiescence-Suche für stabile Bewertung
-            score = quiescence(board, alpha, beta)
-        else:
-            score = evaluate_board(board, self.ai_color == chess.WHITE)
+        score = quiescence(board, alpha, beta) if depth == 0 else evaluate_board(board)
         transposition_table[fen] = {'depth': depth, 'score': score}
         return score
 
-    # Move Ordering: Sortiere Züge nach Priorität
-    sorted_moves = sorted(
+    # Zuggenerierung mit Move Ordering
+    legal_moves = sorted(
         board.legal_moves,
-        key=lambda m: (
-            -get_move_value(board, m),  # Schlagzüge priorisieren
-            board.gives_check(m),  # Checks priorisieren
-            -len(board.attackers(not board.turn, m.to_square))  # Weniger Verteidigung bevorzugt
-        ),
-        reverse=maximizing_player  # Maximierer sortieren absteigend, Minimierer aufsteigend
+        key=lambda m: move_ordering(board, m),
+        reverse=maximizing_player
     )
 
     best_score = -float('inf') if maximizing_player else float('inf')
 
-    for move in sorted_moves:
-        # Vermeide Brettkopien: Nutze push/pop für Effizienz
+    for move in legal_moves:
         board.push(move)
         try:
             current_score = minimax(
@@ -210,10 +213,8 @@ def minimax(
                 start_time,
                 time_limit
             )
-        except TimeoutError:
+        finally:
             board.pop()
-            raise
-        board.pop()
 
         # Alpha-Beta-Pruning
         if maximizing_player:
@@ -224,19 +225,39 @@ def minimax(
             beta = min(beta, best_score)
 
         if beta <= alpha:
-            break  # Prune den Rest der Züge
+            break
 
-    # Aktualisiere die Transpositionstabelle
     transposition_table[fen] = {'depth': depth, 'score': best_score}
     return best_score
 
 
-def quiescence(board, alpha, beta):
-    stand_pat = evaluate_board(board,board.turn == chess.WHITE)
+def move_ordering(board: chess.Board, move: chess.Move) -> int:
+    """Priorisiert Schlagzüge, Checks und gute Positionen."""
+    score = 0
+
+    # Schlagzüge priorisieren
+    if board.is_capture(move):
+        captured_piece = board.piece_at(move.to_square)
+        score += 10 + (captured_piece.piece_type if captured_piece else 0)
+
+    # Checks priorisieren
+    if board.gives_check(move):
+        score += 50
+
+    # Zentrumskontrolle
+    if chess.square_file(move.to_square) in [3, 4] and chess.square_rank(move.to_square) in [3, 4]:
+        score += 20
+
+    return score
+
+
+def quiescence(board: chess.Board, alpha: float, beta: float) -> float:
+    """Quiescence Search zur Vermeidung von Horizonteffekten."""
+    stand_pat = evaluate_board(board)
+
     if stand_pat >= beta:
         return beta
-    if alpha < stand_pat:
-        alpha = stand_pat
+    alpha = max(alpha, stand_pat)
 
     for move in board.generate_legal_captures():
         board.push(move)
@@ -249,3 +270,40 @@ def quiescence(board, alpha, beta):
             alpha = score
 
     return alpha
+
+
+def evaluate_board(board: chess.Board) -> float:
+    """Bewertet die Position aus Sicht des aktuellen Spielers (board.turn)."""
+    # Einfache Materialbewertung (+0.1 pro Zentrumsbauer)
+    score = 0
+
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if not piece:
+            continue
+
+        # Materialwert
+        value = get_piece_value(piece)
+        score += value if piece.color == board.turn else -value
+
+        # Positionsbonus für Bauern
+        if piece.piece_type == chess.PAWN:
+            file = chess.square_file(square)
+            rank = chess.square_rank(square)
+            if 2 <= file <= 5 and 3 <= rank <= 4:
+                score += 0.1 if piece.color == board.turn else -0.1
+
+    return score
+
+
+def get_piece_value(piece: chess.Piece) -> float:
+    """Standard Materialwerte"""
+    values = {
+        chess.PAWN: 1,
+        chess.KNIGHT: 3,
+        chess.BISHOP: 3.2,
+        chess.ROOK: 5,
+        chess.QUEEN: 9,
+        chess.KING: 0
+    }
+    return values[piece.piece_type]
