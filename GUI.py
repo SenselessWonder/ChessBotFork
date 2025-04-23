@@ -1,7 +1,8 @@
 import chess
 import pygame
 from ChessEnv import ChessEnv
-from evaluate_board import evaluate_board
+import time
+clock = pygame.time.Clock()
 
 # Farbpalette
 COLORS = {
@@ -122,16 +123,20 @@ class GUI:
                     self.screen.blit(scaled_piece, (x, y))
 
     def handle_click(self, pos):
-        vis_file = pos[0] // SQUARE_SIZE  # Visuelle Spalte (0 = links)
-        vis_rank = pos[1] // SQUARE_SIZE  # Visuelle Zeile (0 = oben)
+        vis_file = pos[0] // SQUARE_SIZE
+        vis_rank = pos[1] // SQUARE_SIZE
 
-        # Umrechnung in Originalkoordinaten
-        if self.player_color == chess.WHITE:
+        # Korrekte Koordinatenumrechnung
+        if self.game_mode == 'human':
+            if self.player_color == chess.WHITE:
+                original_file = vis_file
+                original_rank = 7 - vis_rank
+            else:
+                original_file = 7 - vis_file
+                original_rank = vis_rank
+        else:  # Für KI vs KI Modus
             original_file = vis_file
             original_rank = 7 - vis_rank
-        else:
-            original_file = 7 - vis_file
-            original_rank = vis_rank
 
         square = chess.square(original_file, original_rank)
 
@@ -153,6 +158,10 @@ class GUI:
                 self.ai_moved = False
 
             self.selected_square = None
+
+            self.draw_board()
+            self.draw_pieces()
+
 
     def draw_legal_moves(self):
         """Zeichnet die legalen Züge basierend auf der Spielerfarbe."""
@@ -195,29 +204,34 @@ class GUI:
             pygame.draw.rect(self.screen, (100, 100, 100), (x, y, SQUARE_SIZE, SQUARE_SIZE), 3)
 
     def handle_promotion(self, from_square, to_square):
-        """Gibt einen neuen Zug mit Umwandlungs-Piece zurück."""
-        promotion_pieces = {
-            "q": chess.QUEEN, "r": chess.ROOK,
-            "b": chess.BISHOP, "n": chess.KNIGHT
-        }
+        # Ändere den Hintergrund auf die neue Farbe
+        self.screen.fill(COLORS["background"])
 
-        # Auswahlmenü anzeigen
-        self.screen.fill((0, 0, 0))
-        font = pygame.font.Font(None, 36)
-        text = font.render("Wähle: Q = Dame, R = Turm, B = Läufer, N = Springer", True, (255, 255, 255))
-        self.screen.blit(text, (50, HEIGHT // 3))
-        pygame.display.flip()
+        # Zeichne Auswahlbuttons
+        promo_buttons = [
+            Button(200, 300, 150, 50, "Dame (Q)", radius=10),
+            Button(400, 300, 150, 50, "Turm (R)", radius=10),
+            Button(200, 370, 150, 50, "Läufer (B)", radius=10),
+            Button(400, 370, 150, 50, "Springer (N)", radius=10)
+        ]
 
-        # Auf Eingabe warten
         while True:
-            for event in pygame.event.get():
-                if event.type == pygame.KEYDOWN:
-                    if event.unicode.lower() in promotion_pieces:
-                        promotion = promotion_pieces[event.unicode.lower()]
-                        return chess.Move(from_square, to_square, promotion=promotion)
-                elif event.type == pygame.QUIT:
-                    pygame.quit()
-                    quit()
+            self.screen.fill(COLORS["background"])
+            for btn in promo_buttons:
+                btn.draw(self.screen)
+
+            pygame.display.flip()
+
+            event = pygame.event.wait()
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for i, btn in enumerate(promo_buttons):
+                    if btn.rect.collidepoint(event.pos):
+                        piece_type = [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT][i]
+                        return chess.Move(from_square, to_square, promotion=piece_type)
 
     def init_main_menu(self):
         self.buttons = [
@@ -303,6 +317,7 @@ class GUI:
             if self.player_color == chess.BLACK:
                 self.make_ai_move()
 
+        self.selected_square = None
         self.run_game_loop()
 
     def run_game_loop(self):

@@ -71,8 +71,13 @@ class ChessEnv:
         self.search_time = search_time
         self.transposition_table = {}
 
-    def get_ai_move(self) -> chess.Move:
-        """Ermittelt den besten Zug mit universellem Minimax"""
+    def get_ai_move(self):
+        base_depth = 3
+        if len(self.board.move_stack) < 8:  # Erhöhte Tiefe in der Eröffnung
+            base_depth = 4
+        elif self.board.is_endgame():  # Reduzierte Tiefe im Endspiel
+            base_depth = 5
+
         start_time = time.time()
         best_move = None
         best_score = -float('inf')
@@ -124,18 +129,23 @@ class ChessEnv:
 
 def get_move_value(board, move):
     score = 0
+
     # Priorisiere Schlagzüge nach Materialwert
     if board.is_capture(move):
-        captured_piece = board.piece_at(move.to_square)
-        score += 10 + PIECE_VALUES[captured_piece.symbol().upper()] if captured_piece else 5
+        captured = board.piece_at(move.to_square)
+        score += 1.5 + (captured.piece_type if captured else 0)
 
     # Priorisiere Checks
     if board.gives_check(move):
-        score += 20
+        score += 2.5
 
-    # Bestrafe das Bewegen in gefährliche Felder
-    attackers = len(board.attackers(not board.turn, move.to_square))
-    score -= attackers * 5
+    # Bestrafe das Zurückziehen in die erste Reihe
+    if move.from_square in chess.SquareSet(chess.BB_RANK_1 | chess.BB_RANK_8):
+        score -= 2.0
+
+    # Bonus für Zentrumskontrolle
+    if chess.square_file(move.to_square) in [3, 4] and chess.square_rank(move.to_square) in [3, 4]:
+        score += 2.0
 
     return score
 
