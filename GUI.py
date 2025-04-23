@@ -57,6 +57,7 @@ class GUI:
         self.buttons = []
         self.show_end_screen = False
 
+
         self.init_main_menu()
 
         # Figuren laden
@@ -71,7 +72,7 @@ class GUI:
         if self.player_color == chess.BLACK:
             ai_move = self.env.get_ai_move()
             if ai_move:
-                self.board.push(ai_move)
+                self.env.board.push(ai_move)
                 self.ai_moved = True
 
     def draw_board(self):
@@ -133,23 +134,22 @@ class GUI:
             original_rank = vis_rank
 
         square = chess.square(original_file, original_rank)
-        # ... (Rest des Codes)
 
         if self.selected_square is None:
             # Auswahl einer Figur
-            if self.board.piece_at(square) and self.board.piece_at(square).color == self.player_color:
+            if self.env.board.piece_at(square) and self.env.board.piece_at(square).color == self.player_color:
                 self.selected_square = square
         else:
             move = chess.Move(self.selected_square, square)
 
             # Automatische Promotion zur Dame, falls nicht ausgewählt
-            if self.board.piece_at(self.selected_square).piece_type == chess.PAWN:
+            if self.env.board.piece_at(self.selected_square).piece_type == chess.PAWN:
                 if (self.player_color == chess.WHITE and chess.square_rank(square) == 7) or \
                         (self.player_color == chess.BLACK and chess.square_rank(square) == 0):
                     move = chess.Move(self.selected_square, square, promotion=chess.QUEEN)
 
-            if move in self.board.legal_moves:
-                self.board.push(move)
+            if move in self.env.board.legal_moves:
+                self.env.board.push(move)
                 self.ai_moved = False
 
             self.selected_square = None
@@ -157,7 +157,7 @@ class GUI:
     def draw_legal_moves(self):
         """Zeichnet die legalen Züge basierend auf der Spielerfarbe."""
         if self.selected_square is not None:
-            for move in self.board.legal_moves:
+            for move in self.env.board.legal_moves:
                 if move.from_square == self.selected_square:
                     # Umrechnung in visuelle Koordinaten
                     to_file = chess.square_file(move.to_square)
@@ -320,9 +320,10 @@ class GUI:
                         self.show_end_screen()
                         running = False
 
-            # Zeichne das Brett
             self.draw_board()
             self.draw_pieces()
+            self.draw_legal_moves()
+            self.draw_selected_square()
 
             # Event-Handling
             for event in pygame.event.get():
@@ -340,6 +341,13 @@ class GUI:
 
         if self.show_end_screen:
             self.show_end_screen()
+
+
+    def make_ai_move(self):
+        ai_move = self.env.get_ai_move()
+        if ai_move:
+            self.env.board.push(ai_move)
+            print(f"KI eröffnet mit: {ai_move.uci()}")
 
     def show_end_screen(self):
         end_buttons = [

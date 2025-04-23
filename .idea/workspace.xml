@@ -4,15 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d740d832-a04e-42f3-b8b4-3224db3d26eb" name="Changes" comment="test2">
+    <list default="true" id="d740d832-a04e-42f3-b8b4-3224db3d26eb" name="Changes" comment="GUI verbesserungen, komplette neu struckturirung,">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ChessEnv.py" beforeDir="false" afterPath="$PROJECT_DIR$/ChessEnv.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/GUI.py" beforeDir="false" afterPath="$PROJECT_DIR$/GUI.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Main.py" beforeDir="false" afterPath="$PROJECT_DIR$/Main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bishop.py" beforeDir="false" afterPath="$PROJECT_DIR$/bishop.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/evaluate_board.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluate_board.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/heatmap.py" beforeDir="false" afterPath="$PROJECT_DIR$/heatmap.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pawn.py" beforeDir="false" afterPath="$PROJECT_DIR$/pawn.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -133,7 +127,7 @@
       <workItem from="1745356999941" duration="555000" />
       <workItem from="1745357938028" duration="662000" />
       <workItem from="1745427941755" duration="2801000" />
-      <workItem from="1745430777883" duration="13625000" />
+      <workItem from="1745430777883" duration="14770000" />
     </task>
     <task id="LOCAL-00001" summary="test">
       <option name="closed" value="true" />
@@ -167,7 +161,15 @@
       <option name="project" value="LOCAL" />
       <updated>1745440324972</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="GUI verbesserungen, komplette neu struckturirung,">
+      <option name="closed" value="true" />
+      <created>1745446921927</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1745446921927</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -199,7 +201,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="test" />
     <MESSAGE value="test2" />
-    <option name="LAST_COMMIT_MESSAGE" value="test2" />
+    <MESSAGE value="GUI verbesserungen, komplette neu struckturirung," />
+    <option name="LAST_COMMIT_MESSAGE" value="GUI verbesserungen, komplette neu struckturirung," />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/ChessAI$evaluate_board.coverage" NAME="evaluate_board Coverage Results" MODIFIED="1745440920930" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
@@ -211,7 +214,7 @@
     <SUITE FILE_PATH="coverage/ChessAI$heatmap.coverage" NAME="heatmap Coverage Results" MODIFIED="1745441650824" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/ChessAI$test.coverage" NAME="test Coverage Results" MODIFIED="1745275235493" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/ChessAI$GUI.coverage" NAME="GUI Coverage Results" MODIFIED="1745445699869" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/ChessAI$Main.coverage" NAME="Main Coverage Results" MODIFIED="1745445263271" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/ChessAI$Main.coverage" NAME="Main Coverage Results" MODIFIED="1745447731988" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/PythonProject$main.coverage" NAME="main Coverage Results" MODIFIED="1740107488235" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/PythonProject$Main.coverage" NAME="Main Coverage Results" MODIFIED="1740329108449" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/PythonProject$Pieces.coverage" NAME="Pieces Coverage Results" MODIFIED="1740326701478" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
