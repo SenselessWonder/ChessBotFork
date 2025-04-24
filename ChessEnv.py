@@ -72,11 +72,6 @@ class ChessEnv:
         self.transposition_table = {}
 
     def get_ai_move(self):
-        base_depth = 3
-        if len(self.board.move_stack) < 8:  # Erhöhte Tiefe in der Eröffnung
-            base_depth = 4
-        elif self.board.is_endgame():  # Reduzierte Tiefe im Endspiel
-            base_depth = 5
 
         start_time = time.time()
         best_move = None
@@ -116,7 +111,7 @@ class ChessEnv:
         try:
             return minimax(
                 board=board_copy,
-                depth=3,  # Basis-Tiefe
+                depth=5,  # Basis-Tiefe
                 alpha=-float('inf'),
                 beta=float('inf'),
                 transposition_table=self.transposition_table,
