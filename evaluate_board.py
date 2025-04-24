@@ -55,10 +55,50 @@ def calculate_positional(board: chess.Board) -> float:
     if black_king:
         king_safety += len(board.attackers(chess.WHITE, black_king)) * 0.3
 
-    score = material + position_bonus + king_safety
+    #5. Matt Belohnung
+    if board.is_checkmate():
+        position_bonus += 1000 if board.turn == chess.WHITE else -1000
+
+    #6. Bonus für felder abdeckung
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece and piece.color == board.turn:
+            for target_square in chess.SQUARES:
+                if board.is_attacked_by(not board.turn, target_square):
+                    if square in chess.SQUARES:
+                        position_bonus += 0.1 if piece.color == chess.WHITE else -0.1
+
+    #7. Bonus für Figurenentwicklung
+    for piece in board.piece_map().values():
+        if piece.color == board.turn:
+            if piece.piece_type in [chess.KNIGHT, chess.BISHOP]:
+                position_bonus += 0.1 if piece.color == chess.WHITE else -0.1
+
+    #8. Bonus für Figurenaktivität
+    for piece in board.piece_map().values():
+        if piece.color == board.turn:
+            if piece.piece_type in [chess.ROOK, chess.QUEEN]:
+                position_bonus += 0.2 if piece.color == chess.WHITE else -0.2
+
+    #9. Bonus Bauernstruktur
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece and piece.color == board.turn and piece.piece_type == chess.PAWN:
+            if square in [chess.A2, chess.B2, chess.C2, chess.D2, chess.E2, chess.F2, chess.G2, chess.H2]:
+                position_bonus += 0.1 if piece.color == chess.WHITE else -0.1
+
+
+
+    score = position_bonus + king_safety
+    return score
 
 def evaluate_board(board: chess.Board) -> float:
     """Bewertet die Position aus Sicht des aktuellen Spielers (board.turn)."""
-    material = calculate_material(board)
+    material = calculate_material(board.fen())
     positional = calculate_positional(board)
-    return material + positional
+
+    score = material + positional
+
+    if board.is_checkmate():
+        return -1000 if board.turn == chess.WHITE else 1000
+    return score

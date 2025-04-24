@@ -308,7 +308,7 @@ class GUI:
                     btn.hovered = btn.rect.collidepoint(event.pos)
 
     def start_game(self):
-        self.env = ChessEnv(self.search_time)
+        self.env = ChessEnv(None,None,self.search_time,)
         if self.game_mode == 'ai_vs_ai':
             self.player_color = None
             self.env.board = chess.Board()
