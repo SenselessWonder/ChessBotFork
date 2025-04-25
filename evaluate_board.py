@@ -53,3 +53,35 @@ class ChessEvaluator:
             return -((moving_value - captured_value) * 1.5)
         
         return captured_value - moving_value
+
+    def evaluate_piece_position(self, piece: chess.Piece, square: int) -> float:
+        """Bewertet die Position einer Figur auf dem Brett."""
+        if piece.piece_type == chess.PAWN:
+            if chess.square_rank(square) in [3, 4]:
+                return self.constants.CENTRAL_PAWN_BONUS
+            return 0.0
+
+        if piece.piece_type == chess.KNIGHT:
+            if chess.square_rank(square) in [3, 4]:
+                return self.constants.CENTRAL_KNIGHT_BONUS
+            return 0.0
+
+        # Weitere Bewertungen für andere Figuren können hier hinzugefügt werden
+        return 0.0
+
+    def evaluate_board(self, board: chess.Board) -> float:
+        """Bewertet das Schachbrett und gibt eine Bewertung zurück."""
+        if board.is_checkmate():
+            return self.constants.CHECKMATE_BONUS
+
+        if board.is_stalemate():
+            return 0.0
+
+        score = 0.0
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece:
+                score += self.piece_values[piece.symbol()]
+                score += self.evaluate_piece_position(piece, square)
+
+        return score

@@ -229,22 +229,6 @@ def minimax(
 
     return best_score
 
-def evaluate_position(board: chess.Board) -> float:
-    """Erweiterte Stellungsbewertung."""
-    base_score = _global_evaluator.evaluate_board(board)
-    
-    # Zusätzliche Bestrafung für ungedeckte Figuren
-    penalty = 0.0
-    for square in chess.SQUARES:
-        piece = board.piece_at(square)
-        if piece:
-            if not board.attackers(piece.color, square):
-                # Ungedeckte Figur
-                penalty -= abs(_global_evaluator.piece_values[piece.symbol()]) * 0.2
-
-    multiplier = 1 if board.turn == chess.WHITE else -1
-    return (base_score + penalty) * multiplier
-
 def rate_move(board: chess.Board, move: chess.Move) -> float:
     """Bewertet einen Zug für Move-Ordering."""
     score = 0.0
@@ -252,41 +236,85 @@ def rate_move(board: chess.Board, move: chess.Move) -> float:
     if not piece:
         return score
 
-    # Zentrumsbonus angepasst für beide Farben
-    central_squares = [27, 28, 35, 36]  # e4, d4, e5, d5
-    if move.to_square in central_squares:
-        bonus = 2.0
-        score += bonus if piece.color == chess.WHITE else bonus
+    # Eröffnungsphase (erste 10 Züge)
+    if board.fullmove_number <= 10:
+        # Stark erhöhter Bonus für Zentrumsbesetzung mit Bauern
+        if piece.piece_type == chess.PAWN:
+            if move.to_square in [27, 28, 35, 36]:  # e4, d4, e5, d5
+                score += 5.0
+            
+        # Bestrafung für frühe Damenzüge
+        if piece.piece_type == chess.QUEEN:
+            score -= 4.0
+            
+        # Bonus für Entwicklung von Leichtfiguren
+        if piece.piece_type in [chess.KNIGHT, chess.BISHOP]:
+            # Bonus für Entwicklung vom Startfeld
+            if (piece.color == chess.WHITE and chess.square_rank(move.from_square) == 1) or \
+               (piece.color == chess.BLACK and chess.square_rank(move.from_square) == 6):
+                score += 3.0
+                
+            # Extra Bonus für Entwicklung ins erweiterte Zentrum
+            if move.to_square in [26, 27, 28, 29, 34, 35, 36, 37]:  # c4-f4, c5-f5
+                score += 2.0
 
-    # Schlagzüge
+    # Standardbewertungen für das ganze Spiel
     if board.is_capture(move):
         victim = board.piece_at(move.to_square)
         if victim:
             score += 10 * victim.piece_type - piece.piece_type
 
-    # Rochade
     if board.is_castling(move):
         score += 7.0
 
-    # Königssicherheit
     if piece.piece_type == chess.KING and not board.is_castling(move):
         if board.fullmove_number < 40 and len(board.piece_map()) > 10:
             score -= 8.0
 
-    # Entwicklung
-    if board.fullmove_number <= 10:
-        if piece.piece_type in [chess.KNIGHT, chess.BISHOP]:
-            score += 1.0
-
-    # Rückzüge für beide Farben
-    if piece.color == chess.WHITE:
-        if chess.square_rank(move.to_square) < chess.square_rank(move.from_square):
-            score -= 0.5
-    else:
-        if chess.square_rank(move.to_square) > chess.square_rank(move.from_square):
-            score -= 0.5
+    # Verbesserte Rückzugsbewertung
+    if board.fullmove_number <= 10:  # Stärkere Bestrafung in der Eröffnung
+        if piece.color == chess.WHITE:
+            if chess.square_rank(move.to_square) < chess.square_rank(move.from_square):
+                score -= 2.0
+        else:
+            if chess.square_rank(move.to_square) > chess.square_rank(move.from_square):
+                score -= 2.0
 
     return score
+
+def evaluate_position(board: chess.Board) -> float:
+    """Erweiterte Stellungsbewertung."""
+    base_score = _global_evaluator.evaluate_board(board)
+    
+    # Zusätzliche Eröffnungsbewertung
+    if board.fullmove_number <= 10:
+        development_score = 0.0
+        
+        # Bewerte Entwicklung und Zentrumskontrolle
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece:
+                # Zentrumsbonus für Bauern
+                if piece.piece_type == chess.PAWN:
+                    if square in [27, 28, 35, 36]:  # e4, d4, e5, d5
+                        development_score += 0.5 if piece.color == chess.WHITE else -0.5
+                
+                # Malus für frühe Damenzüge
+                elif piece.piece_type == chess.QUEEN:
+                    if (piece.color == chess.WHITE and square != chess.D1) or \
+                       (piece.color == chess.BLACK and square != chess.D8):
+                        development_score -= 0.3 if piece.color == chess.WHITE else -0.3
+                
+                # Bonus für entwickelte Leichtfiguren
+                elif piece.piece_type in [chess.KNIGHT, chess.BISHOP]:
+                    if (piece.color == chess.WHITE and chess.square_rank(square) > 1) or \
+                       (piece.color == chess.BLACK and chess.square_rank(square) < 6):
+                        development_score += 0.4 if piece.color == chess.WHITE else -0.4
+
+        base_score += development_score
+
+    multiplier = 1 if board.turn == chess.WHITE else -1
+    return base_score * multiplier
 
 def process_move(board, move, depth, alpha, beta, tt, start_time, time_limit):
     board.push(move)
