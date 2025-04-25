@@ -1,6 +1,4 @@
 import chess
-import numpy as np
-from numba import jit
 
 # Materialwerte aus Weiß-Perspektive
 PIECE_VALUES = {
@@ -29,8 +27,10 @@ def calculate_positional(board: chess.Board) -> float:
         if piece.piece_type == chess.PAWN:
             file = chess.square_file(square)
             rank = chess.square_rank(square)
-            if 2 <= file <= 5 and 3 <= rank <= 4:
-                position_bonus += 0.3 if piece.color == chess.WHITE else -0.3
+            target_rank = rank if piece.color == chess.WHITE else 7 - rank  # ✅
+            if 3 <= target_rank <= 4:
+                if 2 <= file <= 5 and 3 <= target_rank <= 4:
+                    position_bonus += 0.3 if piece.color == chess.WHITE else -0.3
 
         # Bonus für Springer im Zentrum
         elif piece.piece_type == chess.KNIGHT:
@@ -59,7 +59,7 @@ def calculate_positional(board: chess.Board) -> float:
     if board.is_checkmate():
         position_bonus += 1000 if board.turn == chess.WHITE else -1000
 
-    #6. Bonus für felder abdeckung
+    #6. Bonus für Felder Abdeckung
     for square in chess.SQUARES:
         piece = board.piece_at(square)
         if piece and piece.color == board.turn:
@@ -100,5 +100,6 @@ def evaluate_board(board: chess.Board) -> float:
     score = material + positional
 
     if board.is_checkmate():
-        return -1000 if board.turn == chess.WHITE else 1000
+        return 1000 if (board.turn == chess.BLACK and board.is_checkmate()) else -1000
+
     return score

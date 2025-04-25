@@ -48,6 +48,7 @@ def load_svg(filename, size):
 class GUI:
     def __init__(self):
         pygame.init()
+        self.clock = pygame.time.Clock()  # Einmalige Instanziierung
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Schach-KI")
 
@@ -332,7 +333,7 @@ class GUI:
                     print(f"KI-Zug: {ai_move.uci()}")
 
                     if self.env.board.is_game_over():
-                        self.show_end_screen()
+                        self.show_end_screen= True
                         running = False
 
             self.draw_board()
@@ -351,8 +352,7 @@ class GUI:
                     self.handle_click(event.pos)
 
             pygame.display.flip()
-            clock = pygame.time.Clock()
-            clock.tick(60)
+            self.clock.tick(60)
 
         if self.show_end_screen:
             self.show_end_screen()
@@ -365,35 +365,54 @@ class GUI:
             print(f"KI eröffnet mit: {ai_move.uci()}")
 
     def show_end_screen(self):
+        # Font außerhalb der Schleife initialisieren
+        font = pygame.font.Font(None, 50)
+        
+        # Konstanten definieren
+        BUTTON_WIDTH = 300
+        BUTTON_HEIGHT = 50
+        
         end_buttons = [
-            Button(250, 300, 300, 50, "Neues Spiel", radius=15),
-            Button(250, 370, 300, 50, "Beenden", radius=15)
+            Button((WIDTH - BUTTON_WIDTH) // 2, 300, BUTTON_WIDTH, BUTTON_HEIGHT, "Neues Spiel", radius=15),
+            Button((WIDTH - BUTTON_WIDTH) // 2, 370, BUTTON_WIDTH, BUTTON_HEIGHT, "Beenden", radius=15)
         ]
-
-        while True:
-            self.screen.fill(COLORS["background"])
-
-            # Ergebnistext
-            result = self.get_game_result()
-            font = pygame.font.Font(None, 50)
-            text = font.render(result, True, (0, 0, 0))
-            self.screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 200))
-
-            for btn in end_buttons:
-                btn.draw(self.screen)
-            pygame.display.flip()
-
-            event = pygame.event.wait()
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
-
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                for i, btn in enumerate(end_buttons):
-                    if btn.rect.collidepoint(event.pos):
-                        if i == 0:
-                            self.init_main_menu()
-                            return
-                        elif i == 1:
-                            pygame.quit()
-                            quit()
+        
+        running = True
+        while running:
+            try:
+                self.screen.fill(COLORS["background"])
+                result = self.get_game_result()
+                text = font.render(result, True, (0, 0, 0))
+                self.screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 200))
+                
+                for btn in end_buttons:
+                    btn.draw(self.screen)
+                    
+                pygame.display.flip()
+                
+                event = pygame.event.wait()
+                if event.type == pygame.QUIT:
+                    self.cleanup()
+                    running = False
+                    
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    for i, btn in enumerate(end_buttons):
+                        if btn.rect.collidepoint(event.pos):
+                            if i == 0:
+                                self.init_main_menu()
+                                return
+                            elif i == 1:
+                                self.cleanup()
+                                running = False
+                                
+            except pygame.error as e:
+                print(f"Pygame-Fehler aufgetreten: {e}")
+                self.cleanup()
+                running = False
+                
+    def cleanup(self):
+        """Ressourcen ordnungsgemäß freigeben"""
+        try:
+            pygame.quit()
+        except:
+            pass

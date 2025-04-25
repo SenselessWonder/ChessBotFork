@@ -10,6 +10,7 @@ from threading import Lock
 PIECE_VALUES = {'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0}
 
 class ChessEnv:
+
     def __init__(self, player_color, depth, search_time):
         self.search_time = search_time
         self.transposition_table = {}
@@ -17,8 +18,10 @@ class ChessEnv:
         self.player_color = player_color
         self.ai_color = not player_color
         self.tt_lock = Lock()
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+        # Erstelle einen neuen Executor für jede Instanz
+        self.executor = None
 
+    global_executor = None
 
     def reset(self):
         """Setzt das Spiel zurück und gibt den Startzustand zurück."""
@@ -64,13 +67,7 @@ class ChessEnv:
             board_matrix[rank][file] = piece.symbol()  # Keine Spiegelung!
         return board_matrix
 
-    opening_book = {
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR": ["e2e4", "d2d4"],
-        # ... Weitere Positionen
-    }
-
     def get_ai_move(self):
-
         start_time = time.time()
         best_move = None
         best_score = -float('inf')
@@ -79,48 +76,58 @@ class ChessEnv:
             return None
 
         try:
-            # Bewerte alle legalen Züge parallel
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = {
-                    executor.submit(
-                        self.evaluate_move,
-                        move,
-                        start_time
-                    ): move for move in legal_moves
-                }
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(legal_moves))) as executor:
+                chunk_size = max(1, len(legal_moves) // 8)
+                future_chunks = []
+            
+                for i in range(0, len(legal_moves), chunk_size):
+                    chunk = legal_moves[i:i + chunk_size]
+                    futures = {
+                        executor.submit(
+                            self.evaluate_move,
+                            move,
+                            start_time,
+                            timeout=self.search_time/len(legal_moves)
+                        ): move for move in chunk
+                    }
+                    future_chunks.append(futures)
 
-                for future in concurrent.futures.as_completed(futures, timeout=self.search_time):
-                    move = futures[future]
-                    score = future.result()
+                for futures in future_chunks:
+                    for future in concurrent.futures.as_completed(futures, timeout=self.search_time):
+                        try:
+                            move = futures[future]
+                            score = future.result(timeout=0.1)  # Zusätzliches Timeout pro Zug
+                        
+                            if score > best_score:
+                                best_score = score
+                                best_move = move
+                            elif score == best_score and random.random() < 0.5:  # Verbesserte Randomisierung
+                                best_move = move
+                        except Exception as e:
+                            print(f"Fehler bei Zugauswertung: {e}")
 
-                    if score > best_score or (score == best_score and random.random() < 0.3):
-                        best_score = score
-                        best_move = move
-
-        except (concurrent.futures.TimeoutError, TimeoutError):
+        except concurrent.futures.TimeoutError:
             print(f"Zeitüberschreitung nach {time.time() - start_time:.1f}s")
-
-        # Fallback: Zufälliger Zug
+        
         return best_move or random.choice(legal_moves)
 
     def evaluate_move(self, move: chess.Move, start_time: float) -> float:
-        """Bewertet einen einzelnen Zug"""
         board_copy = self.board.copy()
         board_copy.push(move)
 
         try:
             return minimax(
                 board=board_copy,
-                depth=5,  # Basis-Tiefe
+                depth=5,
                 alpha=-float('inf'),
                 beta=float('inf'),
                 transposition_table=self.transposition_table,
                 start_time=start_time,
                 time_limit=self.search_time - (time.time() - start_time),
-                thread_pool=self.executor
+                thread_pool=self.executor  # Verwende den globalen Executor
             )
         except TimeoutError:
-            return -float('inf')  # Timeout als schlechteste Bewertung
+            return -float('inf')
 
 
     def get_move_value(board, move):
@@ -162,13 +169,11 @@ def minimax(
     # Transposition Table Lookup mit Spielerfarbe
     fen_key = f"{board.fen()}{board.turn}"
 
-    tt_lock = Lock()
 
-    with tt_lock:
-        if transposition_table and fen_key in transposition_table:
-            entry = transposition_table[fen_key]
-            if entry['depth'] >= depth:
-                return entry['score']
+    if transposition_table and fen_key in transposition_table:
+        entry = transposition_table[fen_key]
+        if entry['depth'] >= depth:
+            return entry['score']
 
     # Blattknoten oder Zeitüberschreitung
     if depth == 0 or board.is_game_over() or (time.time() - start_time > time_limit):
@@ -187,11 +192,10 @@ def minimax(
 
     best_score = -float('inf') if board.turn == chess.WHITE else float('inf')
     futures = []
-
-    with concurrent.futures.ThreadPoolExecutor() if not thread_pool else thread_pool as executor:
+    with (thread_pool if thread_pool else ChessEnv.global_executor) as active_executor:
         for move in moves:
             if depth > 2:  # Parallelisiere nur in oberen Ebenen
-                future = executor.submit(
+                future = active_executor.submit(
                     process_move,
                     board.copy(),
                     move,
@@ -222,19 +226,18 @@ def minimax(
 
 def process_move(board, move, depth, alpha, beta, tt, start_time, time_limit):
     board.push(move)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        score = minimax(
-            board,
-            depth - 1,
-            alpha,
-            beta,
-            tt,
-            start_time,
-            time_limit,
-            thread_pool=executor
-        )
-        board.pop()
-        return -score
+    score = minimax(
+        board,
+        depth - 1,
+        alpha,
+        beta,
+        tt,
+        start_time,
+        time_limit,
+        thread_pool=None
+    )
+    board.pop()
+    return -score
 
 
 def process_move_sync(board, move, depth, alpha, beta, tt, start_time, time_limit):
@@ -281,11 +284,6 @@ def move_ordering(board: chess.Board, move: chess.Move) -> int:
         to_rank = 7 - to_rank  # Invertiere Rang für Schwarz
     if 3 <= to_rank <= 4 and 3 <= chess.square_file(move.to_square) <= 4:
         score += 20
-
-
-    # Zentrumskontrolle
-    if chess.square_file(move.to_square) in [3, 4] and chess.square_rank(move.to_square) in [3, 4]:
-        score += 2.0
 
     return score
 
