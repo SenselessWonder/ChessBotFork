@@ -111,23 +111,33 @@ class ChessEnv:
         
         return best_move or random.choice(legal_moves)
 
-    def evaluate_move(self, move: chess.Move, start_time: float) -> float:
-        board_copy = self.board.copy()
-        board_copy.push(move)
+    def evaluate_move(self, move: chess.Move, start_time: float = None) -> float:
+        """Bewertet einen Schachzug mithilfe des Minimax-Algorithmus.
+        Args:
+            move: Der zu bewertende Schachzug
+            start_time: Startzeit für Zeitbegrenzung (Unix-Timestamp)
+        Returns:
+            float: Bewertung des Zuges (-INFINITY bis +INFINITY)
+        Raises:
+            TimeoutError: Bei Überschreitung der Zeitbegrenzung
+        """
+        if start_time and start_time < 0:
+            raise ValueError("start_time muss positiv sein")
+        
+        current_time = time.time()
+        effective_start = start_time if start_time is not None else current_time
+        remaining_time = max(0.1, self.search_time - (current_time - effective_start))
 
         try:
-            return minimax(
-                board=board_copy,
-                depth=5,
-                alpha=-float('inf'),
-                beta=float('inf'),
-                transposition_table=self.transposition_table,
-                start_time=start_time,
-                time_limit=self.search_time - (time.time() - start_time),
-                thread_pool=self.executor  # Verwende den globalen Executor
-            )
+            board_copy = self.board.copy()
+            board_copy.push(move)
+            return self._execute_minimax(board_copy, remaining_time)
         except TimeoutError:
-            return -float('inf')
+            self.logger.warning(f"Zeitüberschreitung bei der Bewertung von Zug {move}")
+            return -self.INFINITY
+        except Exception as e:
+            self.logger.error(f"Fehler bei der Bewertung von Zug {move}: {str(e)}")
+            raise
 
 
     def get_move_value(board, move):

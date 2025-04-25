@@ -355,7 +355,7 @@ class GUI:
             self.clock.tick(60)
 
         if self.show_end_screen:
-            self.show_end_screen()
+            self.display_end_screen()  # Umbenennen zur Vermeidung von Rekursion
 
 
     def make_ai_move(self):
@@ -364,7 +364,7 @@ class GUI:
             self.env.board.push(ai_move)
             print(f"KI eröffnet mit: {ai_move.uci()}")
 
-    def show_end_screen(self):
+    def display_end_screen(self):
         # Font außerhalb der Schleife initialisieren
         font = pygame.font.Font(None, 50)
         
@@ -416,3 +416,20 @@ class GUI:
             pygame.quit()
         except:
             pass
+
+    def get_game_result(self):
+        if self.env.board.is_checkmate():
+            if self.env.board.turn == chess.WHITE:
+                return "Schwarz gewinnt!"
+            else:
+                return "Weiß gewinnt!"
+        elif self.env.board.is_stalemate():
+            return "Unentschieden (Patt)!"
+        elif self.env.board.is_insufficient_material():
+            return "Unentschieden (Materialmangel)!"
+        elif self.env.board.is_seventyfive_moves():
+            return "Unentschieden (75 Züge)!"
+        elif self.env.board.is_fivefold_repetition():
+            return "Unentschieden (5-fache Wiederholung)!"
+        else:
+            return "Unbekanntes Ergebnis"
