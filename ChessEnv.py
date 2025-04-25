@@ -2,7 +2,7 @@ import chess
 import concurrent.futures
 import numpy as np
 import concurrent.futures
-from evaluate_board import evaluate_board
+from evaluate_board import ChessEvaluator
 import time
 import random
 from threading import Lock
@@ -10,7 +10,6 @@ from threading import Lock
 PIECE_VALUES = {'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0}
 
 class ChessEnv:
-
     def __init__(self, player_color, depth, search_time):
         self.search_time = search_time
         self.transposition_table = {}
@@ -18,8 +17,13 @@ class ChessEnv:
         self.player_color = player_color
         self.ai_color = not player_color
         self.tt_lock = Lock()
-        # Erstelle einen neuen Executor für jede Instanz
-        self.executor = None
+        self.evaluator = ChessEvaluator()  # Erstelle eine einzelne Instanz
+        # Erstelle einen neuen Executor für die Instanz
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
+
+    def __del__(self):
+        if hasattr(self, 'executor'):
+            self.executor.shutdown(wait=False)
 
     global_executor = None
 
@@ -71,73 +75,89 @@ class ChessEnv:
         start_time = time.time()
         best_move = None
         best_score = -float('inf')
+        depth = 1
+        
         legal_moves = list(self.board.legal_moves)
         if not legal_moves:
             return None
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(legal_moves))) as executor:
-                chunk_size = max(1, len(legal_moves) // 8)
-                future_chunks = []
-            
-                for i in range(0, len(legal_moves), chunk_size):
-                    chunk = legal_moves[i:i + chunk_size]
+            while time.time() - start_time < self.search_time * 0.8:  # 80% der verfügbaren Zeit
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(legal_moves))) as executor:
+                    current_best_move = None
+                    current_best_score = -float('inf')
+                    
                     futures = {
                         executor.submit(
-                            self.evaluate_move,
+                            self.evaluate_move_with_depth,
                             move,
-                            start_time,
-                            timeout=self.search_time/len(legal_moves)
-                        ): move for move in chunk
+                            depth,
+                            start_time
+                        ): move for move in legal_moves
                     }
-                    future_chunks.append(futures)
-
-                for futures in future_chunks:
-                    for future in concurrent.futures.as_completed(futures, timeout=self.search_time):
+                    
+                    for future in concurrent.futures.as_completed(futures):
                         try:
                             move = futures[future]
-                            score = future.result(timeout=0.1)  # Zusätzliches Timeout pro Zug
-                        
-                            if score > best_score:
-                                best_score = score
-                                best_move = move
-                            elif score == best_score and random.random() < 0.5:  # Verbesserte Randomisierung
-                                best_move = move
+                            score = future.result(timeout=0.1)
+                            
+                            if score > current_best_score:
+                                current_best_score = score
+                                current_best_move = move
                         except Exception as e:
-                            print(f"Fehler bei Zugauswertung: {e}")
-
+                            print(f"Fehler bei Tiefe {depth}: {e}")
+                            continue
+                    
+                    if current_best_move:
+                        best_move = current_best_move
+                        best_score = current_best_score
+                        
+                depth += 1
+                
         except concurrent.futures.TimeoutError:
-            print(f"Zeitüberschreitung nach {time.time() - start_time:.1f}s")
+            print(f"Iterative Deepening beendet bei Tiefe {depth-1}")
         
         return best_move or random.choice(legal_moves)
 
+    def evaluate_move_with_depth(self, move, depth, start_time):
+        """Bewertet einen Zug mit bestimmter Tiefe."""
+        board_copy = self.board.copy()  # Erstelle eine Kopie des Boards
+        board_copy.push(move)
+        return -minimax(
+            board_copy, 
+            depth,
+            -float('inf'),
+            float('inf'),
+            self.transposition_table,
+            start_time,
+            self.search_time
+        )
+
     def evaluate_move(self, move: chess.Move, start_time: float = None) -> float:
-        """Bewertet einen Schachzug mithilfe des Minimax-Algorithmus.
-        Args:
-            move: Der zu bewertende Schachzug
-            start_time: Startzeit für Zeitbegrenzung (Unix-Timestamp)
-        Returns:
-            float: Bewertung des Zuges (-INFINITY bis +INFINITY)
-        Raises:
-            TimeoutError: Bei Überschreitung der Zeitbegrenzung
-        """
+        """Bewertet einen Zug mit Minimax und Alpha-Beta-Pruning."""
+        if move is None:
+            raise TypeError("move darf nicht None sein")
+        
+        if not hasattr(self, 'search_time'):
+            raise AttributeError("search_time muss definiert sein")
+        
         if start_time and start_time < 0:
             raise ValueError("start_time muss positiv sein")
         
         current_time = time.time()
         effective_start = start_time if start_time is not None else current_time
-        remaining_time = max(0.1, self.search_time - (current_time - effective_start))
-
+        remaining_time = max(0.01, self.search_time - (current_time - effective_start))
+        
         try:
-            board_copy = self.board.copy()
-            board_copy.push(move)
-            return self._execute_minimax(board_copy, remaining_time)
+            with self.board.copy() as board_copy:
+                board_copy.push(move)
+                return self._execute_minimax(board_copy, remaining_time)
         except TimeoutError:
             self.logger.warning(f"Zeitüberschreitung bei der Bewertung von Zug {move}")
-            return -self.INFINITY
+            return float('-inf')
         except Exception as e:
             self.logger.error(f"Fehler bei der Bewertung von Zug {move}: {str(e)}")
-            raise
+        raise
 
 
     def get_move_value(board, move):
@@ -179,7 +199,6 @@ def minimax(
     # Transposition Table Lookup mit Spielerfarbe
     fen_key = f"{board.fen()}{board.turn}"
 
-
     if transposition_table and fen_key in transposition_table:
         entry = transposition_table[fen_key]
         if entry['depth'] >= depth:
@@ -201,26 +220,23 @@ def minimax(
     )
 
     best_score = -float('inf') if board.turn == chess.WHITE else float('inf')
-    futures = []
-    with (thread_pool if thread_pool else ChessEnv.global_executor) as active_executor:
+    
+    # Entferne den with-Block und prüfe stattdessen auf thread_pool
+    if thread_pool and depth > 2:  # Parallelisiere nur in oberen Ebenen
+        futures = []
         for move in moves:
-            if depth > 2:  # Parallelisiere nur in oberen Ebenen
-                future = active_executor.submit(
-                    process_move,
-                    board.copy(),
-                    move,
-                    depth,
-                    alpha,
-                    beta,
-                    transposition_table,
-                    start_time,
-                    time_limit,
-                )
-                futures.append((move, future))
-            else:
-                score = process_move_sync(board, move, depth, alpha, beta, transposition_table, start_time,
-                                          time_limit)
-                best_score, alpha, beta = update_scores(score, best_score, alpha, beta, board.turn)
+            future = thread_pool.submit(
+                process_move,
+                board.copy(),
+                move,
+                depth,
+                alpha,
+                beta,
+                transposition_table,
+                start_time,
+                time_limit,
+            )
+            futures.append((move, future))
 
         # Verarbeite Futures
         for move, future in futures:
@@ -229,6 +245,11 @@ def minimax(
                 best_score, alpha, beta = update_scores(score, best_score, alpha, beta, board.turn)
             except concurrent.futures.TimeoutError:
                 break
+    else:
+        # Sequentielle Verarbeitung für geringe Tiefen
+        for move in moves:
+            score = process_move_sync(board, move, depth, alpha, beta, transposition_table, start_time, time_limit)
+            best_score, alpha, beta = update_scores(score, best_score, alpha, beta, board.turn)
 
     transposition_table[fen_key] = {'depth': depth, 'score': best_score}
     return best_score
@@ -268,39 +289,45 @@ def update_scores(score, best_score, alpha, beta, turn):
 
 
 def move_ordering(board: chess.Board, move: chess.Move) -> int:
-    """Priorisiert Schlagzüge, Checks und gute Positionen."""
     score = 0
-
-    if board.is_castling(move):
-        score += 30
-
-    if board.is_stalemate():
-        score -= 100
-
-    # Schlagzüge priorisieren
+    
+    # Schachmatt sofort höchste Priorität
+    if board.is_checkmate():
+        return 10000
+    
+    # Schlagzüge analysieren
     if board.is_capture(move):
         captured_piece = board.piece_at(move.to_square)
-        score += 10 + (captured_piece.piece_type if captured_piece else 0)
-
-    # Checks priorisieren
-    if board.gives_check(move):
-        score += 50
-
-    if board.is_checkmate():
-        score += 1000
-
-    to_rank = chess.square_rank(move.to_square)
-    if board.turn == chess.BLACK:
-        to_rank = 7 - to_rank  # Invertiere Rang für Schwarz
-    if 3 <= to_rank <= 4 and 3 <= chess.square_file(move.to_square) <= 4:
-        score += 20
-
+        moving_piece = board.piece_at(move.from_square)
+        if captured_piece and moving_piece:
+            # MVV-LVA (Most Valuable Victim - Least Valuable Aggressor)
+            score += 10 * captured_piece.piece_type - moving_piece.piece_type
+    
+    # Entwicklung der Figuren in der Eröffnung
+    if board.fullmove_number <= 10:
+        if board.piece_at(move.from_square).piece_type in [chess.KNIGHT, chess.BISHOP]:
+            score += 30
+            
+    # Kontrolle des Zentrums
+    central_squares = [27, 28, 35, 36]  # e4, d4, e5, d5
+    if move.to_square in central_squares:
+        score += 25
+        
+    # Rochade
+    if board.is_castling(move):
+        score += 40
+        
+    # Vermeidung von Zugwiederholungen
+    if len(board.move_stack) >= 4:
+        if move == board.move_stack[-2]:  # Verhindere direkte Zugwiederholung
+            score -= 50
+            
     return score
 
 
 def quiescence(board: chess.Board, alpha: float, beta: float) -> float:
     """Quiescence Search zur Vermeidung von Horizonteffekten."""
-    stand_pat = evaluate_board(board)
+    stand_pat = ChessEvaluator.evaluate_board(board)
 
     if stand_pat >= beta:
         return beta
