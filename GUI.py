@@ -263,7 +263,7 @@ class GUI:
                             self.game_mode = 'ai_vs_ai'
                             self.start_game()
                         elif i == 2:  # Rechenzeit
-                            self.search_time = 5 if self.search_time == 10 else 10
+                            self.search_time = 3 if self.search_time == 5 else 5
                             btn.text = f"Rechenzeit: {self.search_time}s"
 
             if event.type == pygame.MOUSEMOTION:

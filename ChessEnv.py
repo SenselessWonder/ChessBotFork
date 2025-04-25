@@ -199,64 +199,94 @@ def minimax(
         thread_pool: concurrent.futures.ThreadPoolExecutor = None
 ) -> float:
     """Multithreaded Minimax mit Alpha-Beta Pruning."""
-    # Transposition Table Lookup
-    fen_key = f"{board.fen()}{board.turn}"
+    if start_time and time.time() - start_time > time_limit:
+        return float('-inf')
 
-    if transposition_table and fen_key in transposition_table:
-        entry = transposition_table[fen_key]
-        if entry['depth'] >= depth:
-            return entry['score']
-
-    # Blattknoten oder Zeitüberschreitung
-    if depth == 0 or board.is_game_over() or (time.time() - start_time > time_limit):
-        score = _global_evaluator.evaluate_board(board)
-        return score if board.turn else -score  # Negiere für Schwarz
+    if depth == 0 or board.is_game_over():
+        return evaluate_position(board)
 
     moves = list(board.legal_moves)
+    moves.sort(key=lambda m: rate_move(board, m), reverse=True)
+    
     best_score = -float('inf')
 
-    # Parallelisierung für tiefere Ebenen
-    if thread_pool and depth > 2:
-        futures = []
-        for move in moves:
-            future = thread_pool.submit(
-                process_move,
-                board.copy(),
-                move,
-                depth,
-                -beta,
-                -alpha,
-                transposition_table,
-                start_time,
-                time_limit
-            )
-            futures.append((move, future))
+    for move in moves:
+        # Prüfe auf schlechte Schlagzüge
+        material_change = _global_evaluator.evaluate_material_change(board, move)
+        
+        board.push(move)
+        score = -minimax(board, depth - 1, -beta, -alpha, transposition_table, start_time, time_limit)
+        
+        # Füge Materialänderungsbewertung hinzu
+        score += material_change
+        
+        board.pop()
+        
+        best_score = max(best_score, score)
+        alpha = max(alpha, score)
+        if alpha >= beta:
+            break
 
-        for move, future in futures:
-            try:
-                score = -future.result(timeout=time_limit - (time.time() - start_time))
-                best_score = max(best_score, score)
-                alpha = max(alpha, score)
-                if alpha >= beta:
-                    break
-            except concurrent.futures.TimeoutError:
-                break
-    else:
-        # Sequentielle Verarbeitung
-        for move in moves:
-            board.push(move)
-            score = -minimax(board, depth - 1, -beta, -alpha, transposition_table, start_time, time_limit)
-            board.pop()
-            
-            best_score = max(best_score, score)
-            alpha = max(alpha, score)
-            if alpha >= beta:
-                break
-
-    if transposition_table is not None:
-        transposition_table[fen_key] = {'depth': depth, 'score': best_score}
-    
     return best_score
+
+def evaluate_position(board: chess.Board) -> float:
+    """Erweiterte Stellungsbewertung."""
+    base_score = _global_evaluator.evaluate_board(board)
+    
+    # Zusätzliche Bestrafung für ungedeckte Figuren
+    penalty = 0.0
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece:
+            if not board.attackers(piece.color, square):
+                # Ungedeckte Figur
+                penalty -= abs(_global_evaluator.piece_values[piece.symbol()]) * 0.2
+
+    multiplier = 1 if board.turn == chess.WHITE else -1
+    return (base_score + penalty) * multiplier
+
+def rate_move(board: chess.Board, move: chess.Move) -> float:
+    """Bewertet einen Zug für Move-Ordering."""
+    score = 0.0
+    piece = board.piece_at(move.from_square)
+    if not piece:
+        return score
+
+    # Zentrumsbonus angepasst für beide Farben
+    central_squares = [27, 28, 35, 36]  # e4, d4, e5, d5
+    if move.to_square in central_squares:
+        bonus = 2.0
+        score += bonus if piece.color == chess.WHITE else bonus
+
+    # Schlagzüge
+    if board.is_capture(move):
+        victim = board.piece_at(move.to_square)
+        if victim:
+            score += 10 * victim.piece_type - piece.piece_type
+
+    # Rochade
+    if board.is_castling(move):
+        score += 7.0
+
+    # Königssicherheit
+    if piece.piece_type == chess.KING and not board.is_castling(move):
+        if board.fullmove_number < 40 and len(board.piece_map()) > 10:
+            score -= 8.0
+
+    # Entwicklung
+    if board.fullmove_number <= 10:
+        if piece.piece_type in [chess.KNIGHT, chess.BISHOP]:
+            score += 1.0
+
+    # Rückzüge für beide Farben
+    if piece.color == chess.WHITE:
+        if chess.square_rank(move.to_square) < chess.square_rank(move.from_square):
+            score -= 0.5
+    else:
+        if chess.square_rank(move.to_square) > chess.square_rank(move.from_square):
+            score -= 0.5
+
+    return score
 
 def process_move(board, move, depth, alpha, beta, tt, start_time, time_limit):
     board.push(move)

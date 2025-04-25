@@ -16,84 +16,40 @@ class PositionalConstants:
 
 class ChessEvaluator:
     def __init__(self):
+        # Erhöhte Materialwerte
         self.piece_values: Dict[str, float] = {
-            'P': 1, 'N': 3, 'B': 3.2, 'R': 5, 'Q': 9, 'K': 0,
-            'p': -1, 'n': -3, 'b': -3.2, 'r': -5, 'q': -9, 'k': 0
+            'P': 2,    # Bauer
+            'N': 6,    # Springer
+            'B': 6.4,  # Läufer
+            'R': 10,   # Turm
+            'Q': 18,   # Dame
+            'K': 0,    # König
+            'p': -2,
+            'n': -6,
+            'b': -6.4,
+            'r': -10,
+            'q': -18,
+            'k': 0
         }
         self.constants = PositionalConstants()
+
+    def evaluate_material_change(self, board: chess.Board, move: chess.Move) -> float:
+        """Bewertet Materialänderungen mit zusätzlicher Bestrafung für Verluste."""
+        if not board.is_capture(move):
+            return 0.0
+
+        moving_piece = board.piece_at(move.from_square)
+        captured_piece = board.piece_at(move.to_square)
         
-    def evaluate_material(self, fen: str) -> float:
-        return sum(self.piece_values[c] for c in fen.split(" ")[0] if c in self.piece_values)
+        if not moving_piece or not captured_piece:
+            return 0.0
 
-    def evaluate_central_control(self, board: chess.Board) -> float:
-        bonus = 0.0
-        for square in chess.SQUARES:
-            piece = board.piece_at(square)
-            if not piece:
-                continue
-            
-            if self._is_central_pawn(piece, square):
-                bonus += self._get_color_multiplier(piece.color) * self.constants.CENTRAL_PAWN_BONUS
-            elif self._is_central_knight(piece, square):
-                bonus += self._get_color_multiplier(piece.color) * self.constants.CENTRAL_KNIGHT_BONUS
-        return bonus
+        moving_value = abs(self.piece_values[moving_piece.symbol()])
+        captured_value = abs(self.piece_values[captured_piece.symbol()])
 
-    def evaluate_pawn_structure(self, board: chess.Board) -> float:
-        bonus = 0.0
-        pawn_files = {}
-        for square in board.pieces(chess.PAWN, chess.WHITE):
-            file = chess.square_file(square)
-            pawn_files[file] = pawn_files.get(file, 0) + 1
+        # Wenn der Wert der geschlagenen Figur kleiner ist
+        if captured_value < moving_value:
+            # Zusätzliche Bestrafung für schlechte Tausche
+            return -((moving_value - captured_value) * 1.5)
         
-        for count in pawn_files.values():
-            if count > 1:
-                bonus -= self.constants.DOUBLED_PAWN_PENALTY * (count - 1)
-        return bonus
-
-    def evaluate_king_safety(self, board: chess.Board) -> float:
-        safety = 0.0
-        white_king = board.king(chess.WHITE)
-        black_king = board.king(chess.BLACK)
-        
-        if white_king:
-            safety -= len(board.attackers(chess.BLACK, white_king)) * self.constants.KING_SAFETY_PENALTY
-        if black_king:
-            safety += len(board.attackers(chess.WHITE, black_king)) * self.constants.KING_SAFETY_PENALTY
-        return safety
-
-    def evaluate_position(self, board: chess.Board) -> float:
-        position_score = (
-            self.evaluate_central_control(board) +
-            self.evaluate_pawn_structure(board) +
-            self.evaluate_king_safety(board)
-        )
-        
-        if board.is_checkmate():
-            position_score += (self.constants.CHECKMATE_BONUS 
-                             if board.turn == chess.WHITE else -self.constants.CHECKMATE_BONUS)
-            
-        return position_score
-
-    def evaluate_board(self, board: chess.Board) -> float:
-        """Bewertet die Position aus Sicht des aktuellen Spielers."""
-        material = self.evaluate_material(board.fen())
-        positional = self.evaluate_position(board)
-        return material + positional
-
-    @staticmethod
-    def _is_central_pawn(piece: chess.Piece, square: chess.Square) -> bool:
-        if piece.piece_type != chess.PAWN:
-            return False
-        file = chess.square_file(square)
-        rank = chess.square_rank(square)
-        target_rank = rank if piece.color == chess.WHITE else 7 - rank
-        return 2 <= file <= 5 and 3 <= target_rank <= 4
-
-    @staticmethod
-    def _is_central_knight(piece: chess.Piece, square: chess.Square) -> bool:
-        return (piece.piece_type == chess.KNIGHT and 
-                square in [chess.D4, chess.D5, chess.E4, chess.E5])
-
-    @staticmethod
-    def _get_color_multiplier(color: chess.Color) -> int:
-        return 1 if color == chess.WHITE else -1
+        return captured_value - moving_value
