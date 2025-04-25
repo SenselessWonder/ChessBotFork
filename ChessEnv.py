@@ -7,6 +7,9 @@ import time
 import random
 from threading import Lock
 
+# Am Anfang der Datei nach den Imports
+_global_evaluator = ChessEvaluator()
+
 PIECE_VALUES = {'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0}
 
 class ChessEnv:
@@ -195,8 +198,8 @@ def minimax(
         time_limit: float = None,
         thread_pool: concurrent.futures.ThreadPoolExecutor = None
 ) -> float:
-    """Multithreaded Minimax mit Alpha-Beta Pruning und dynamischem Move Ordering."""
-    # Transposition Table Lookup mit Spielerfarbe
+    """Multithreaded Minimax mit Alpha-Beta Pruning."""
+    # Transposition Table Lookup
     fen_key = f"{board.fen()}{board.turn}"
 
     if transposition_table and fen_key in transposition_table:
@@ -206,23 +209,14 @@ def minimax(
 
     # Blattknoten oder Zeitüberschreitung
     if depth == 0 or board.is_game_over() or (time.time() - start_time > time_limit):
-        return quiescence(board, alpha, beta)
+        score = _global_evaluator.evaluate_board(board)
+        return score if board.turn else -score  # Negiere für Schwarz
 
-    # Move Ordering mit Farbinversion
-    def get_move_priority(move):
-        base_score = move_ordering(board, move)
-        return base_score if board.turn == chess.WHITE else -base_score
+    moves = list(board.legal_moves)
+    best_score = -float('inf')
 
-    moves = sorted(
-        board.legal_moves,
-        key=get_move_priority,
-        reverse=board.turn == chess.WHITE
-    )
-
-    best_score = -float('inf') if board.turn == chess.WHITE else float('inf')
-    
-    # Entferne den with-Block und prüfe stattdessen auf thread_pool
-    if thread_pool and depth > 2:  # Parallelisiere nur in oberen Ebenen
+    # Parallelisierung für tiefere Ebenen
+    if thread_pool and depth > 2:
         futures = []
         for move in moves:
             future = thread_pool.submit(
@@ -230,117 +224,63 @@ def minimax(
                 board.copy(),
                 move,
                 depth,
-                alpha,
-                beta,
+                -beta,
+                -alpha,
                 transposition_table,
                 start_time,
-                time_limit,
+                time_limit
             )
             futures.append((move, future))
 
-        # Verarbeite Futures
         for move, future in futures:
             try:
-                score = future.result(timeout=time_limit - (time.time() - start_time))
-                best_score, alpha, beta = update_scores(score, best_score, alpha, beta, board.turn)
+                score = -future.result(timeout=time_limit - (time.time() - start_time))
+                best_score = max(best_score, score)
+                alpha = max(alpha, score)
+                if alpha >= beta:
+                    break
             except concurrent.futures.TimeoutError:
                 break
     else:
-        # Sequentielle Verarbeitung für geringe Tiefen
+        # Sequentielle Verarbeitung
         for move in moves:
-            score = process_move_sync(board, move, depth, alpha, beta, transposition_table, start_time, time_limit)
-            best_score, alpha, beta = update_scores(score, best_score, alpha, beta, board.turn)
+            board.push(move)
+            score = -minimax(board, depth - 1, -beta, -alpha, transposition_table, start_time, time_limit)
+            board.pop()
+            
+            best_score = max(best_score, score)
+            alpha = max(alpha, score)
+            if alpha >= beta:
+                break
 
-    transposition_table[fen_key] = {'depth': depth, 'score': best_score}
+    if transposition_table is not None:
+        transposition_table[fen_key] = {'depth': depth, 'score': best_score}
+    
     return best_score
-
 
 def process_move(board, move, depth, alpha, beta, tt, start_time, time_limit):
     board.push(move)
-    score = minimax(
-        board,
-        depth - 1,
-        alpha,
-        beta,
-        tt,
-        start_time,
-        time_limit,
-        thread_pool=None
-    )
-    board.pop()
-    return -score
-
-
-def process_move_sync(board, move, depth, alpha, beta, tt, start_time, time_limit):
-    board.push(move)
     score = minimax(board, depth - 1, alpha, beta, tt, start_time, time_limit)
     board.pop()
-    return score if board.turn == chess.WHITE else -score
-
-
-def update_scores(score, best_score, alpha, beta, turn):
-    if turn == chess.WHITE:
-        best_score = max(best_score, score)
-        alpha = max(alpha, best_score)
-    else:
-        best_score = min(best_score, score)
-        beta = min(beta, best_score)
-    return best_score, alpha, beta
-
-
-def move_ordering(board: chess.Board, move: chess.Move) -> int:
-    score = 0
-    
-    # Schachmatt sofort höchste Priorität
-    if board.is_checkmate():
-        return 10000
-    
-    # Schlagzüge analysieren
-    if board.is_capture(move):
-        captured_piece = board.piece_at(move.to_square)
-        moving_piece = board.piece_at(move.from_square)
-        if captured_piece and moving_piece:
-            # MVV-LVA (Most Valuable Victim - Least Valuable Aggressor)
-            score += 10 * captured_piece.piece_type - moving_piece.piece_type
-    
-    # Entwicklung der Figuren in der Eröffnung
-    if board.fullmove_number <= 10:
-        if board.piece_at(move.from_square).piece_type in [chess.KNIGHT, chess.BISHOP]:
-            score += 30
-            
-    # Kontrolle des Zentrums
-    central_squares = [27, 28, 35, 36]  # e4, d4, e5, d5
-    if move.to_square in central_squares:
-        score += 25
-        
-    # Rochade
-    if board.is_castling(move):
-        score += 40
-        
-    # Vermeidung von Zugwiederholungen
-    if len(board.move_stack) >= 4:
-        if move == board.move_stack[-2]:  # Verhindere direkte Zugwiederholung
-            score -= 50
-            
     return score
-
 
 def quiescence(board: chess.Board, alpha: float, beta: float) -> float:
     """Quiescence Search zur Vermeidung von Horizonteffekten."""
-    stand_pat = ChessEvaluator.evaluate_board(board)
-
-    if stand_pat >= beta:
+    score = _global_evaluator.evaluate_board(board)
+    if not board.turn:  # Für Schwarz negieren
+        score = -score
+        
+    if score >= beta:
         return beta
-    alpha = max(alpha, stand_pat)
+    alpha = max(alpha, score)
 
     for move in board.generate_legal_captures():
         board.push(move)
-        score = -quiescence(board, -beta, -alpha)
+        eval = -quiescence(board, -beta, -alpha)
         board.pop()
 
-        if score >= beta:
+        if eval >= beta:
             return beta
-        if score > alpha:
-            alpha = score
+        alpha = max(alpha, eval)
 
     return alpha
