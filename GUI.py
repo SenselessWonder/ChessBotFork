@@ -70,13 +70,6 @@ class GUI:
 
         self.selected_square = None
 
-        # Falls der Spieler Schwarz ist, muss die KI zuerst ziehen
-        if self.player_color == chess.BLACK:
-            ai_move = self.env.get_ai_move()
-            if ai_move:
-                self.env.board.push(ai_move)
-                self.ai_moved = True
-
     def draw_board(self):
         """Zeichnet das Brett mit a1 und h8 immer weiß."""
         for vis_rank in range(8):  # Visuelle Zeile (0 = oben)
@@ -312,12 +305,8 @@ class GUI:
         self.env = ChessEnv(None,None,self.search_time,)
         if self.game_mode == 'ai_vs_ai':
             self.player_color = None
-            self.env.board = chess.Board()
-        else:
-            self.env.board = chess.Board()
-            if self.player_color == chess.BLACK:
-                self.make_ai_move()
 
+        self.env.board = chess.Board()
         self.selected_square = None
         self.run_game_loop()
 
@@ -355,14 +344,7 @@ class GUI:
             self.clock.tick(60)
 
         if self.show_end_screen:
-            self.display_end_screen()  # Umbenennen zur Vermeidung von Rekursion
-
-
-    def make_ai_move(self):
-        ai_move = self.env.get_ai_move()
-        if ai_move:
-            self.env.board.push(ai_move)
-            print(f"KI eröffnet mit: {ai_move.uci()}")
+            self.display_end_screen()
 
     def display_end_screen(self):
         # Font außerhalb der Schleife initialisieren
